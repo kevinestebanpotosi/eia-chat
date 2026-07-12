@@ -1,5 +1,5 @@
 import logging
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from groq import AsyncGroq
 
 from app.config import settings, validate_settings
