@@ -7,7 +7,8 @@ from pydantic import ValidationError
 
 from app.config import settings, validate_settings
 from app.schemas import ChatRequest, ChatResponse
-from app.store_resolver import resolve_store
+from app.store_resolver import resolve_store, init_stores, reload_stores, get_inbox_map
+from app.store_loader import list_stores_summary
 from app.intent_classifier import classify_intent
 from app.retriever import search_context
 from app.memory import get_history, save_message
@@ -47,6 +48,7 @@ def _get_groq() -> AsyncGroq:
 async def startup() -> None:
     try:
         validate_settings()
+        init_stores()
         logger.info("eia-rag gateway iniciado (collection=%s)", settings.COLLECTION_NAME)
     except ValueError as e:
         logger.error("Configuración inválida: %s", e)
@@ -127,3 +129,20 @@ async def health_check() -> dict:
         "service": "EIA RAG Gateway",
         "collection": settings.COLLECTION_NAME,
     }
+
+
+@app.get("/stores")
+async def list_stores() -> dict:
+    loaded = get_inbox_map()
+    summary = list_stores_summary()
+    return {
+        "total_inboxes": len(loaded),
+        "stores": summary,
+        "inbox_ids_loaded": sorted(loaded.keys()),
+    }
+
+
+@app.post("/stores/reload")
+async def reload_stores_endpoint() -> dict:
+    result = reload_stores()
+    return {"status": "ok", "message": "Tiendas recargadas", "inboxes_loaded": result["loaded"]}

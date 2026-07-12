@@ -1,7 +1,13 @@
 import pytest
-from app.store_resolver import resolve_store, StoreConfig
+from app.store_resolver import resolve_store, StoreConfig, init_stores, reload_stores, get_inbox_map
+from app.store_loader import load_stores, list_stores_summary
 from app.intent_classifier import _keyword_fallback, _parse_intent_output
 from app.schemas import ChatRequest, ChatResponse
+
+
+@pytest.fixture(autouse=True)
+def _setup_stores():
+    init_stores()
 
 
 class TestStoreResolver:
@@ -26,6 +32,55 @@ class TestStoreResolver:
         assert store.store_name == "tienda-99"
         assert store.is_global is False
         assert store.audience == "CLIENTE"
+        assert store.channel_tokens == ["__unmapped_99__"]
+
+    def test_other_stores_loaded(self):
+        assert resolve_store(1).store_name == "ecommer"
+        assert resolve_store(10).store_name == "sol-y-luna"
+
+
+class TestStoreLoader:
+    def test_load_stores(self):
+        stores = load_stores()
+        assert len(stores) > 0
+        assert 1 in stores
+        assert 10 in stores
+
+    def test_list_stores_summary(self):
+        summary = list_stores_summary()
+        names = [s["store_name"] for s in summary]
+        assert "ecommer" in names
+        assert "sol-y-luna" in names
+
+    def test_reload_stores(self):
+        result = reload_stores()
+        assert "loaded" in result
+        assert result["loaded"] > 0
+
+
+class TestStoreConfigInboxMap:
+    def test_ecommer_has_five_channels(self):
+        store = resolve_store(1)
+        assert store.channel_name == "whatsapp"
+        store = resolve_store(2)
+        assert store.channel_name == "instagram"
+        store = resolve_store(5)
+        assert store.channel_name == "admin"
+
+    def test_sol_y_luna_has_five_channels(self):
+        store = resolve_store(10)
+        assert store.channel_name == "whatsapp"
+        store = resolve_store(11)
+        assert store.channel_name == "instagram"
+        store = resolve_store(14)
+        assert store.channel_name == "admin"
+
+    def test_tenant_stores_different_tokens(self):
+        stores = load_stores()
+        sol = stores[10]
+        ziru = [s for s in stores.values() if s.store_name == "ziru-acoustics"]
+        if ziru:
+            assert sol.channel_tokens != ziru[0].channel_tokens
 
 
 class TestIntentClassifier:
