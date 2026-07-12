@@ -42,8 +42,12 @@ async def startup() -> None:
         raise
 
 
-@app.post("/chat", response_model=ChatResponse)
-async def chat_endpoint(payload: dict) -> ChatResponse:
+@app.post("/chat")
+async def chat_endpoint(http_request: Request):
+    try:
+        payload = await http_request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="JSON inválido")
     if not payload.get("query") and payload.get("message"):
         payload["query"] = payload["message"]
     request = ChatRequest(**payload)
