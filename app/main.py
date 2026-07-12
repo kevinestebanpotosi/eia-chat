@@ -43,7 +43,10 @@ async def startup() -> None:
 
 
 @app.post("/chat", response_model=ChatResponse)
-async def chat_endpoint(request: ChatRequest) -> ChatResponse:
+async def chat_endpoint(payload: dict) -> ChatResponse:
+    if not payload.get("query") and payload.get("message"):
+        payload["query"] = payload["message"]
+    request = ChatRequest(**payload)
     query = request.query.strip()
     if not query:
         raise HTTPException(status_code=400, detail="El mensaje no puede estar vacío.")
