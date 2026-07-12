@@ -66,25 +66,20 @@ async def search_context(
 
     must_conditions.append(
         FieldCondition(
-            key="metadata.audience",
+            key="audience",
             match=MatchAny(any=[store.audience]),
         )
     )
 
     content_type_values = []
-    intent_to_type = {
-        "CATALOGO": "product",
-        "POLITICAS": "policy",
-        "INFO_GENERAL": "info_general",
-    }
     for intent in intents:
-        if intent in intent_to_type:
-            content_type_values.append(intent_to_type[intent])
+        if intent in ("CATALOGO", "POLITICAS", "INFO_GENERAL"):
+            content_type_values.append(intent)
 
     if content_type_values:
         must_conditions.append(
             FieldCondition(
-                key="metadata.content_type",
+                key="content_type",
                 match=MatchAny(any=content_type_values),
             )
         )
@@ -136,7 +131,7 @@ async def search_context(
         if e.status_code == 400:
             logger.warning("Error 400 de Qdrant — reintentando sin filtro de audiencia")
             try:
-                fallback_filter = Filter(must=[c for c in must_conditions if c.key != "metadata.audience"]) if must_conditions else None
+                fallback_filter = Filter(must=[c for c in must_conditions if c.key != "audience"]) if must_conditions else None
                 response = await client.query_points(
                     collection_name=settings.COLLECTION_NAME,
                     query=query_vector,
