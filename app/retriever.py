@@ -131,7 +131,11 @@ async def search_context(
         if e.status_code == 400:
             logger.warning("Error 400 de Qdrant — reintentando sin filtro de audiencia")
             try:
-                fallback_filter = Filter(must=[c for c in must_conditions if c.key != "audience"]) if must_conditions else None
+                fallback_conditions = [
+                    c for c in must_conditions
+                    if not (isinstance(c, FieldCondition) and c.key == "audience")
+                ]
+                fallback_filter = Filter(must=fallback_conditions) if fallback_conditions else None
                 response = await client.query_points(
                     collection_name=settings.COLLECTION_NAME,
                     query=query_vector,

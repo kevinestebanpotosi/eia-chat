@@ -1,6 +1,9 @@
 import logging
+
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from groq import AsyncGroq
+from pydantic import ValidationError
 
 from app.config import settings, validate_settings
 from app.schemas import ChatRequest, ChatResponse
@@ -20,6 +23,14 @@ app = FastAPI(
     title="EIA RAG Gateway",
     description="Unified RAG: intent classification + vector search + memory + LLM generation",
     version="0.1.0",
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 _groq_client: AsyncGroq | None = None
@@ -48,9 +59,15 @@ async def chat_endpoint(http_request: Request):
         payload = await http_request.json()
     except Exception:
         raise HTTPException(status_code=400, detail="JSON inválido")
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="El body debe ser un objeto JSON")
     if not payload.get("query") and payload.get("message"):
         payload["query"] = payload["message"]
-    request = ChatRequest(**payload)
+    try:
+        request = ChatRequest(**payload)
+    except ValidationError as e:
+        errors = [{"loc": err["loc"], "msg": err["msg"]} for err in e.errors()]
+        raise HTTPException(status_code=422, detail=errors)
     query = request.query.strip()
     if not query:
         raise HTTPException(status_code=400, detail="El mensaje no puede estar vacío.")

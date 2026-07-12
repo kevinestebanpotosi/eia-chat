@@ -1,12 +1,11 @@
-from pydantic import BaseModel, Field
-
-
 import uuid
 from datetime import datetime
 
+from pydantic import BaseModel, Field
+
 
 class ChatRequest(BaseModel):
-    query: str = Field(default="", min_length=0, description="Mensaje del usuario")
+    query: str = Field(description="Mensaje del usuario")
     conversation_id: str = Field(
         default_factory=lambda: f"shop-{datetime.now().strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:6]}",
         description="ID de conversación",

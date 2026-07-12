@@ -7,17 +7,19 @@ from app.schemas import ChatRequest, ChatResponse
 class TestStoreResolver:
     def test_global_store(self):
         store = resolve_store(1)
-        assert store.store_name == "ecommer-global"
+        assert store.store_name == "ecommer"
         assert store.is_global is True
         assert store.channel_tokens == []
         assert store.audience == "CLIENTE"
+        assert store.channel_name == "whatsapp"
 
     def test_tenant_store(self):
-        store = resolve_store(2)
+        store = resolve_store(10)
         assert store.store_name == "sol-y-luna"
         assert store.is_global is False
         assert "sol-y-luna-token" in store.channel_tokens
         assert store.audience == "CLIENTE"
+        assert store.channel_name == "whatsapp"
 
     def test_unknown_store_fallback(self):
         store = resolve_store(99)
