@@ -64,12 +64,15 @@ async def search_context(
 
     must_conditions: list[FieldCondition] = []
 
-    must_conditions.append(
-        FieldCondition(
-            key="audience",
-            match=MatchAny(any=[store.audience]),
+    has_catalogo = "CATALOGO" in intents
+
+    if not (has_catalogo and store.is_global):
+        must_conditions.append(
+            FieldCondition(
+                key="audience",
+                match=MatchAny(any=[store.audience]),
+            )
         )
-    )
 
     content_type_values = []
     for intent in intents:
@@ -83,8 +86,6 @@ async def search_context(
                 match=MatchAny(any=content_type_values),
             )
         )
-
-    has_catalogo = "CATALOGO" in intents
     _platform_only = IsEmptyCondition(is_empty=PayloadField(key="metadata.channel_tokens"))
 
     if has_catalogo and store.is_global:
