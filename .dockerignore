@@ -1,0 +1,52 @@
+# Git
+.git/
+.gitignore
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+*.whl
+
+# Virtual environment
+.venv/
+venv/
+
+# Environment files (SECRETS - never in image)
+.env
+.env.*
+!.env.example
+
+# Tests
+tests/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Dev/config files
+*.log
+docker-compose*.yml
+docker-compose*.yaml
+railway.json
+Procfile
+
+# uv cache
+.uv/
+
+# Documentation
+*.md
+LICENSE
