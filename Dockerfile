@@ -23,7 +23,7 @@ COPY app/ ./app/
 # Install the project itself (fast, deps already cached)
 RUN uv sync --frozen --no-dev
 
-ENV PORT=8000
+ENV PORT=8080
 EXPOSE ${PORT}
 
 CMD ["sh", "-c", "uv run uvicorn app.main:app --host 0.0.0.0 --port $PORT"]

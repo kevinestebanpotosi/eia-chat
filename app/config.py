@@ -24,7 +24,7 @@ class Settings:
     REDIS_URL: str | None = os.getenv("REDIS_URL") or os.getenv("VALKEY_URL")
 
     # --- Gateway ---
-    PORT: int = int(os.getenv("PORT", "8000"))
+    PORT: int = int(os.getenv("PORT", "8080"))
 
 
 settings = Settings()
