@@ -133,6 +133,21 @@ async def search_context(
         if e.status_code == 404:
             logger.warning("Colección '%s' no existe", settings.COLLECTION_NAME)
             return []
+        if e.status_code == 400:
+            logger.warning("Error 400 de Qdrant — reintentando sin filtro de audiencia")
+            try:
+                fallback_filter = Filter(must=[c for c in must_conditions if c.key != "metadata.audience"]) if must_conditions else None
+                response = await client.query_points(
+                    collection_name=settings.COLLECTION_NAME,
+                    query=query_vector,
+                    query_filter=fallback_filter,
+                    limit=limit,
+                    with_payload=True,
+                )
+                return [{"score": hit.score, "payload": hit.payload} for hit in response.points]
+            except Exception as f:
+                logger.error("Fallo también el fallback: %s", f)
+                return []
         logger.error("Error Qdrant HTTP: %s", e)
         return []
     except Exception as e:
