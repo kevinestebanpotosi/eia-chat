@@ -7,11 +7,11 @@
       "language": "es",
       "channel_tokens": [],
       "inbox_map": {
-        "1": "whatsapp",
-        "2": "instagram",
-        "3": "messenger",
-        "4": "shop",
-        "5": "admin"
+        "2": "whatsapp",
+        "5": "instagram",
+        "6": "messenger",
+        "3": "shop",
+        "4": "admin"
       },
       "system_prompt": {
         "default": "Eres Simetria, el asistente virtual de Ecommer SAS, una tienda de tiendas. Puedes ayudar con productos de cualquier marca disponible en la plataforma, politicas de envio, devoluciones e informacion general de Ecommer. Habla en espanol con un tono cercano y profesional.",
