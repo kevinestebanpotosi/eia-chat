@@ -12,7 +12,7 @@ def _setup_stores():
 
 class TestStoreResolver:
     def test_global_store(self):
-        store = resolve_store(1)
+        store = resolve_store(2)
         assert store.store_name == "ecommer"
         assert store.is_global is True
         assert store.channel_tokens == []
@@ -35,7 +35,7 @@ class TestStoreResolver:
         assert store.channel_tokens == ["__unmapped_99__"]
 
     def test_other_stores_loaded(self):
-        assert resolve_store(1).store_name == "ecommer"
+        assert resolve_store(2).store_name == "ecommer"
         assert resolve_store(10).store_name == "sol-y-luna"
 
 
@@ -43,7 +43,7 @@ class TestStoreLoader:
     def test_load_stores(self):
         stores = load_stores()
         assert len(stores) > 0
-        assert 1 in stores
+        assert 2 in stores
         assert 10 in stores
 
     def test_list_stores_summary(self):
@@ -60,11 +60,11 @@ class TestStoreLoader:
 
 class TestStoreConfigInboxMap:
     def test_ecommer_has_five_channels(self):
-        store = resolve_store(1)
-        assert store.channel_name == "whatsapp"
         store = resolve_store(2)
-        assert store.channel_name == "instagram"
+        assert store.channel_name == "whatsapp"
         store = resolve_store(5)
+        assert store.channel_name == "instagram"
+        store = resolve_store(4)
         assert store.channel_name == "admin"
 
     def test_sol_y_luna_has_five_channels(self):

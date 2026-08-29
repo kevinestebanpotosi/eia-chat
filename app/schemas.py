@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class ChatRequest(BaseModel):
@@ -13,6 +13,16 @@ class ChatRequest(BaseModel):
     inbox_id: int = Field(default=1, description="ID del inbox de Chatwoot (→ tienda + canal)")
     user_id: int | None = Field(None, description="ID del usuario en Chatwoot")
     channel: str | None = Field(None, description="Canal de origen: whatsapp, instagram, messenger, shop, admin")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _accept_legacy_message_key(cls, data):
+        if isinstance(data, dict):
+            payload = dict(data)
+            if "query" not in payload and "message" in payload:
+                payload["query"] = payload["message"]
+            return payload
+        return data
 
 
 class ChatResponse(BaseModel):

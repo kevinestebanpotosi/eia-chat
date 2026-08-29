@@ -63,7 +63,7 @@ async def classify_intent(query: str) -> list[str]:
             ],
             model=settings.GROQ_ROUTER_MODEL,
             temperature=0.0,
-            max_tokens=10,
+            max_tokens=256,
         )
         raw = completion.choices[0].message.content.strip().upper()
         detected = _parse_intent_output(raw)

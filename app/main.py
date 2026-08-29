@@ -55,21 +55,8 @@ async def startup() -> None:
         raise
 
 
-@app.post("/chat")
-async def chat_endpoint(http_request: Request):
-    try:
-        payload = await http_request.json()
-    except Exception:
-        raise HTTPException(status_code=400, detail="JSON inválido")
-    if not isinstance(payload, dict):
-        raise HTTPException(status_code=400, detail="El body debe ser un objeto JSON")
-    if not payload.get("query") and payload.get("message"):
-        payload["query"] = payload["message"]
-    try:
-        request = ChatRequest(**payload)
-    except ValidationError as e:
-        errors = [{"loc": err["loc"], "msg": err["msg"]} for err in e.errors()]
-        raise HTTPException(status_code=422, detail=errors)
+@app.post("/chat", response_model=ChatResponse)
+async def chat_endpoint(request: ChatRequest):
     query = request.query.strip()
     if not query:
         raise HTTPException(status_code=400, detail="El mensaje no puede estar vacío.")
@@ -102,11 +89,17 @@ async def chat_endpoint(http_request: Request):
             messages=messages,
             model=settings.GROQ_CHAT_MODEL,
             temperature=0.2,
-            max_tokens=150,
+            max_tokens=1024,
         )
         raw = completion.choices[0].message.content or ""
         answer = raw.encode("utf-8", errors="replace").decode("utf-8")
         answer = answer.replace("\n", " ").replace("\r", "").strip()
+        if not answer:
+            logger.warning(
+                "Groq devolvió contenido vacío (finish_reason=%s)",
+                completion.choices[0].finish_reason,
+            )
+            answer = "Lo siento, no pude generar una respuesta en este momento. ¿Podrías reformular tu pregunta?"
     except Exception as e:
         logger.error("Error generando respuesta: %s", e)
         answer = "Lo siento, estoy teniendo problemas técnicos en este momento para procesar tu solicitud."
