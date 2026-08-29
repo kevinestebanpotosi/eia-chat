@@ -17,8 +17,8 @@ class Settings:
 
     # --- Groq ---
     GROQ_API_KEY: str | None = os.getenv("GROQ_API_KEY")
-    GROQ_ROUTER_MODEL: str = os.getenv("GROQ_ROUTER_MODEL", "llama-3.1-8b-instant")
-    GROQ_CHAT_MODEL: str = os.getenv("GROQ_CHAT_MODEL", "llama-3.3-70b-versatile")
+    GROQ_ROUTER_MODEL: str = os.getenv("GROQ_ROUTER_MODEL")
+    GROQ_CHAT_MODEL: str = os.getenv("GROQ_CHAT_MODEL")
 
     # --- Redis/Valkey (memory) ---
     REDIS_URL: str | None = os.getenv("REDIS_URL") or os.getenv("VALKEY_URL")
