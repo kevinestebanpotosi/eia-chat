@@ -15,7 +15,7 @@ from groq import AsyncGroq
 from langfuse import get_client, observe
 
 from app.config import settings
-from app.grounding import apply_grounding
+from app.grounding import apply_grounding, ensure_product_links
 from app.llm_generator import build_prompt
 from app.memory import get_history
 from app.observability import usage_details_from_groq
@@ -152,6 +152,9 @@ async def answer(
             text, grounding_issues = apply_grounding(
                 text, context_items, history, intent=intent
             )
+            added_links: list[str] = []
+            if not grounding_issues and text:
+                text, added_links = ensure_product_links(text, context_items, intent=intent)
             generation.update(
                 output=text,
                 usage_details=usage_details_from_groq(completion),
@@ -159,6 +162,7 @@ async def answer(
                     "finish_reason": completion.choices[0].finish_reason,
                     "grounded": not grounding_issues,
                     "grounding_issues": grounding_issues,
+                    "links_added": added_links,
                 },
             )
         if not text:

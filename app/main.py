@@ -14,7 +14,7 @@ from app.intent_classifier import classify_intent
 from app.retriever import search_context, list_categories
 from app.memory import get_history, save_message
 from app.llm_generator import build_prompt
-from app.grounding import apply_grounding
+from app.grounding import apply_grounding, ensure_product_links
 from app.agent.core import run_agent
 
 logging.basicConfig(
@@ -119,6 +119,10 @@ async def chat_endpoint(request: ChatRequest):
         )
         if grounding_issues:
             logger.warning("/chat :: grounding bloqueó la respuesta: %s", grounding_issues)
+        elif answer:
+            answer, added_links = ensure_product_links(answer, context_items, intent=intent_str)
+            if added_links:
+                logger.info("/chat :: links agregados: %s", added_links)
         if not answer:
             logger.warning(
                 "Groq devolvió contenido vacío (finish_reason=%s)",

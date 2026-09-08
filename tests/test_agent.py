@@ -514,6 +514,20 @@ class TestGroundingGuardrail:
 
         assert "Panela orgánica" in result.answer
 
+    def test_missing_product_link_appended(self, monkeypatch):
+        monkeypatch.setattr("app.agent.core.classify_intent", _stub_classify(["CATALOGO"]))
+
+        async def _with_context(*a, **k):
+            return [_product(score=0.9, name="KZ Castor Pro")]
+        monkeypatch.setattr(tools, "search_context", _with_context)
+        fake = _FakeGroq("Te recomiendo el KZ Castor Pro, ideal para escuchar música.")
+        monkeypatch.setattr(tools, "_get_groq", lambda: fake)
+
+        result = _run("¿me recomiendas el KZ?", inbox_id=2)
+
+        url = "https://ecommer.shop/es/product/kz-castor-pro-bass-edition"
+        assert url in result.answer
+
 
 class TestCategoriesDispatch:
     def test_categories_query_uses_list_categorias_not_search(self, monkeypatch):

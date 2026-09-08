@@ -12,6 +12,7 @@ SYSTEM_PROMPT_TEMPLATE ="""{store_prompt}
     8. CONSULTA GENÉRICA: Si el cliente pregunta cosas como "¿qué productos tienen?", no listes todo de una vez. Menciona 2-3 ejemplos variados en una sola frase y pregunta qué está buscando.
     9. FORMATO: El texto debe leerse como un mensaje de chat humano, no como una ficha técnica. Los emojis (👉 🔗 💡) son opcionales: úsalos con moderación y solo si aportan; no los repitas por cada producto. Sin saltos de línea.
     10. Longitud: respuestas cortas, de máximo 150 tokens.
+    11. ENLACES: Cuando menciones un producto del catálogo, incluye SIEMPRE su link de compra tal como aparece en el CONTEXTO (la URL después de "URL de compra:"). Nunca inventes ni modifiques URLs. Si lo omites, el sistema lo agrega automáticamente al final de tu respuesta.
 
     CONTEXTO ACTUAL DE LA BASE DE DATOS:
     
