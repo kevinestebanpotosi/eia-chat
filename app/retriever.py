@@ -44,6 +44,25 @@ async def _embed(text: str) -> list[float]:
     return response.data[0].embedding
 
 
+def _apply_min_score(results: list[dict]) -> list[dict]:
+    """Descarta resultados por debajo del umbral de similitud.
+
+    Evita que contexto débil (p.ej. un atributo compartido como "Calzado" en un
+    producto que no es zapato) alimente al LLM y dispare una respuesta
+    inventada. Con `RETRIEVER_MIN_SCORE=0` (o negativo) el filtro queda
+    desactivado.
+    """
+    min_score = settings.RETRIEVER_MIN_SCORE
+    if not min_score:
+        return results
+    kept = [r for r in results if (r.get("score") or 0.0) >= min_score]
+    if len(kept) != len(results):
+        logger.info(
+            "Umbral de score (>=%.3f): %d/%d resultados", min_score, len(kept), len(results)
+        )
+    return kept
+
+
 async def search_context(
     query: str,
     store: StoreConfig,
@@ -123,7 +142,7 @@ async def search_context(
         )
         results = response.points
         logger.info("Encontrados %d resultados", len(results))
-        return [{"score": hit.score, "payload": hit.payload} for hit in results]
+        return _apply_min_score([{"score": hit.score, "payload": hit.payload} for hit in results])
 
     except UnexpectedResponse as e:
         if e.status_code == 404:
@@ -144,7 +163,10 @@ async def search_context(
                     limit=limit,
                     with_payload=True,
                 )
-                return [{"score": hit.score, "payload": hit.payload} for hit in response.points]
+                logger.info("Encontrados %d resultados", len(response.points))
+                return _apply_min_score(
+                    [{"score": hit.score, "payload": hit.payload} for hit in response.points]
+                )
             except Exception as f:
                 logger.error("Fallo también el fallback: %s", f)
                 return []

@@ -1,6 +1,7 @@
 import re
 import logging
 from groq import AsyncGroq
+from langfuse import observe
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -52,6 +53,7 @@ def _keyword_fallback(query: str) -> list[str]:
     return list(dict.fromkeys(detected))
 
 
+@observe(as_type="generation", name="classify_intent")
 async def classify_intent(query: str) -> list[str]:
     logger.info("Clasificando intención: '%s'", query)
     try:

@@ -13,6 +13,7 @@ class StoreConfig:
     audience: str = "CLIENTE"
     system_prompt: str = ""
     language: str = "es"
+    is_mapped: bool = True
 
 
 _INBOX_MAP: dict[int, StoreConfig] = {}
@@ -25,6 +26,7 @@ def _fallback_store(inbox_id: int) -> StoreConfig:
         channel_tokens=[f"__unmapped_{inbox_id}__"],
         is_global=False,
         audience="CLIENTE",
+        is_mapped=False,
         system_prompt=(
             "Aun no tengo informacion configurada para esta tienda. "
             "Un miembro del equipo te va a contactar pronto. "

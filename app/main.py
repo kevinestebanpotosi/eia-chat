@@ -6,13 +6,14 @@ from groq import AsyncGroq
 from pydantic import ValidationError
 
 from app.config import settings, validate_settings
-from app.schemas import ChatRequest, ChatResponse
+from app.schemas import ChatRequest, ChatResponse, AgentChatResponse
 from app.store_resolver import resolve_store, init_stores, reload_stores, get_inbox_map
 from app.store_loader import list_stores_summary
 from app.intent_classifier import classify_intent
 from app.retriever import search_context
 from app.memory import get_history, save_message
 from app.llm_generator import build_prompt
+from app.agent.core import run_agent
 
 logging.basicConfig(
     level=logging.INFO,
@@ -112,6 +113,45 @@ async def chat_endpoint(request: ChatRequest):
         intent_detected=intent_str,
         sources_used=len(context_items),
         conversation_id=request.conversation_id,
+    )
+
+
+@app.post("/agent/chat", response_model=AgentChatResponse)
+async def agent_chat(request: ChatRequest):
+    """Fase 3/6 — Endpoint del agente conversacional (a mano, sin framework).
+
+    Mismo contrato que /chat. Devuelve additionally `escalado` y `tools_used`.
+    No reemplaza a /chat hasta que supere el baseline del golden set.
+    """
+    query = request.query.strip()
+    if not query:
+        raise HTTPException(status_code=400, detail="El mensaje no puede estar vacío.")
+
+    try:
+        result = await run_agent(
+            query=query,
+            conversation_id=request.conversation_id or "",
+            inbox_id=request.inbox_id,
+            user_id=request.user_id,
+            channel=request.channel,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    store = resolve_store(request.inbox_id)
+
+    logger.info(
+        "Agente resultado: '%s' | tienda=%s (%s) | escalado=%s | tools=%s",
+        query, store.store_name, store.channel_name, result.escalado, result.tools_used,
+    )
+
+    return AgentChatResponse(
+        answer=result.answer,
+        intent_detected=result.intent_detected,
+        sources_used=result.sources_used,
+        conversation_id=result.conversation_id,
+        escalado=result.escalado,
+        tools_used=result.tools_used,
     )
 
 
