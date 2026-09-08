@@ -11,6 +11,7 @@ import pytest
 
 from app.agent import tools
 from app.agent.core import run_agent, TRIVIAL_REPLY
+from app.llm_generator import build_prompt
 from app.store_resolver import resolve_store, init_stores
 
 
@@ -361,6 +362,54 @@ class TestFollowUpUsesPriorProducts:
         assert result.answer == "Te recomiendo la panela orgánica."
         assert not _has_guard(fake.records[0]["messages"])
         assert not any(n.startswith("search_") for n in result.tools_used)
+
+
+class TestFewShotInjection:
+    EXAMPLES = [
+        {"role": "user", "content": "¡Hola!"},
+        {"role": "assistant", "content": "¡Hola! ¿Qué estás buscando hoy?"},
+    ]
+
+    def test_build_prompt_injects_few_shot_before_history(self):
+        messages = build_prompt(
+            query="¿tienen panela?",
+            intent="CATALOGO",
+            context_items=[_product()],
+            history=[{"role": "user", "content": "turno previo"}],
+            store_prompt="Eres el asistente.",
+            few_shot=self.EXAMPLES,
+        )
+        assert messages[:3] == [
+            {"role": "system", "content": messages[0]["content"]},
+            self.EXAMPLES[0],
+            self.EXAMPLES[1],
+        ]
+        assert {"role": "user", "content": "turno previo"} in messages
+        assert messages[-1] == {"role": "user", "content": "¿tienen panela?"}
+
+    def test_build_prompt_without_few_shot(self):
+        messages = build_prompt(
+            query="hola",
+            intent="CONVERSACIONAL",
+            context_items=[],
+            history=[],
+            store_prompt="Eres el asistente.",
+        )
+        assert all(m.get("role") == "system" or m == {"role": "user", "content": "hola"}
+                   for m in messages)
+        assert messages[-1] == {"role": "user", "content": "hola"}
+
+    def test_agent_wires_store_few_shot(self, monkeypatch):
+        monkeypatch.setattr("app.agent.core.classify_intent", _stub_classify(["CATALOGO"]))
+        monkeypatch.setattr(tools, "search_context", _recording_search([]))
+        fake = _FakeGroq("Respuesta.")
+        monkeypatch.setattr(tools, "_get_groq", lambda: fake)
+
+        _run("¿tienen panela?", inbox_id=2)
+
+        msgs = fake.records[0]["messages"]
+        assert any(m.get("role") == "assistant" and "Simetria" in m.get("content", "")
+                   and "buscando" in m.get("content", "") for m in msgs)
 
 
 class TestTrivialMessages:

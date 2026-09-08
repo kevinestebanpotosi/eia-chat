@@ -20,6 +20,23 @@ import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
+
+try:
+    from eval.naturalness import score_naturalness
+except ImportError:  # ejecutado como script: sys.path[0] == eval/
+    from naturalness import score_naturalness
+
+from groq import AsyncGroq
+
+try:
+    from app.config import settings
+
+    _DEFAULT_JUDGE_MODEL = getattr(settings, "GROQ_CHAT_MODEL", "openai/gpt-oss-120b")
+    _DEFAULT_JUDGE_KEY = getattr(settings, "GROQ_API_KEY", "")
+except Exception:  # noqa: BLE001 — sin .env, el juez queda deshabilitado
+    _DEFAULT_JUDGE_MODEL = "openai/gpt-oss-120b"
+    _DEFAULT_JUDGE_KEY = ""
 
 EVAL_DIR = Path(__file__).resolve().parent
 GOLDEN_SET = EVAL_DIR / "golden_set.jsonl"
@@ -126,7 +143,8 @@ def fake_answers(case: dict) -> tuple[list[str], list[str]]:
 
 
 async def run_case(case: dict, endpoint: str, timeout: float, check_intent: bool,
-                   dry_run: bool) -> dict:
+                   dry_run: bool, judge: Any | None = None,
+                   judge_model: str = "") -> dict:
     if not case.get("turnos"):
         return evaluate_case(case, [], [], check_intent)
 
@@ -144,7 +162,20 @@ async def run_case(case: dict, endpoint: str, timeout: float, check_intent: bool
         intents.append(resp.get("intent_detected", ""))
         if resp.get("error"):
             break
-    return evaluate_case(case, answers, intents, check_intent)
+
+    result = evaluate_case(case, answers, intents, check_intent)
+
+    if judge is not None and answers:
+        scores = []
+        for query, answer in zip(case["turnos"], answers):
+            score = await score_naturalness(query, answer, judge, judge_model)
+            scores.append(score)
+        promedio = round(
+            sum(s["puntaje"] for s in scores) / len(scores), 2
+        ) if scores else 0
+        result["naturalidad"] = {"por_turno": scores, "promedio": promedio}
+
+    return result
 
 
 def summarize(results: list[dict], args: argparse.Namespace) -> dict:
@@ -170,14 +201,21 @@ def summarize(results: list[dict], args: argparse.Namespace) -> dict:
         "tasa_exito": round(passed / total, 4) if total else 0.0,
         "por_tag": by_tag,
         "casos": [{"id": r["id"], "ok": r["ok"], "intencion_esperada": r["intencion_esperada"],
-                   "intencion_detectada": r["intencion_detectada"], "checks": r["checks"]}
+                   "intencion_detectada": r["intencion_detectada"], "checks": r["checks"],
+                   **({"naturalidad": r["naturalidad"]} if "naturalidad" in r else {})}
                   for r in results],
     }
+
+    naturalidades = [r["naturalidad"]["promedio"] for r in results if "naturalidad" in r]
+    if naturalidades:
+        report["naturalidad_promedio"] = round(sum(naturalidades) / len(naturalidades), 2)
 
     print(f"\nResultado: {passed}/{total} {f'({report["tasa_exito"] * 100:.1f}%)' if total else ''}")
     for tag in sorted(by_tag):
         b = by_tag[tag]
         print(f"  [{tag}] {b['ok']}/{b['total']}")
+    if naturalidades and "naturalidad_promedio" in report:
+        print(f"Naturalidad promedio (1-5): {report['naturalidad_promedio']}")
     failed = [r for r in results if not r["ok"]]
     if failed:
         print("\nNo pasan:")
@@ -196,6 +234,13 @@ async def main(args: argparse.Namespace) -> int:
     if args.no_report:
         args.output = None
 
+    judge = None
+    if args.judge:
+        if not _DEFAULT_JUDGE_KEY:
+            print("--judge requiere GROQ_API_KEY en el .env. Se omite la dimensión de naturalidad.")
+        else:
+            judge = AsyncGroq(api_key=_DEFAULT_JUDGE_KEY)
+
     cases = load_cases(args.dataset)
     if args.tag:
         cases = [c for c in cases if args.tag in c.get("tags", [])]
@@ -205,11 +250,13 @@ async def main(args: argparse.Namespace) -> int:
         print("Sin casos después de aplicar filtros.")
         return 1
 
-    print(f"Casos: {len(cases)} | endpoint: {args.endpoint} | dry_run: {args.dry_run}")
+    print(f"Casos: {len(cases)} | endpoint: {args.endpoint} | dry_run: {args.dry_run}"
+          f"{' | judge: ' + (args.judge_model or 'default') if judge else ''}")
     results: list[dict] = []
     for i, case in enumerate(cases, 1):
         result = await run_case(case, args.endpoint, args.timeout,
-                                args.check_intent, args.dry_run)
+                                args.check_intent, args.dry_run,
+                                judge=judge, judge_model=args.judge_model or _DEFAULT_JUDGE_MODEL)
         results.append(result)
         print(f"  [{i}/{len(cases)}] {'OK ' if result['ok'] else 'FAIL'} {result['id']}")
     summarize(results, args)
@@ -234,6 +281,10 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
                         help="Simula respuestas con los criterios 'debe_incluir' (sin red).")
     parser.add_argument("--check-intent", action="store_true",
                         help="Añade chequeo duro de intención detectada == esperada.")
+    parser.add_argument("--judge", action="store_true",
+                        help="Añade puntuación LLM-as-judge de naturalidad/tono (1-5) por turno.")
+    parser.add_argument("--judge-model", default=_DEFAULT_JUDGE_MODEL,
+                        help="Modelo del juez de naturalidad (por defecto: GROQ_CHAT_MODEL).")
     parser.add_argument("--no-report", action="store_true", help="No escribir report.json.")
     return parser.parse_args(argv)
 

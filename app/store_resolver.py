@@ -14,6 +14,7 @@ class StoreConfig:
     system_prompt: str = ""
     language: str = "es"
     is_mapped: bool = True
+    few_shot: list[dict] = field(default_factory=list)
 
 
 _INBOX_MAP: dict[int, StoreConfig] = {}

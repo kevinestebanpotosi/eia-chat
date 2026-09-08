@@ -117,6 +117,7 @@ async def answer(
         history=history,
         store_prompt=store.system_prompt,
         nocontext_guard=not context_items and not has_prior_products,
+        few_shot=store.few_shot,
     )
     client = get_client()
     try:

@@ -38,6 +38,16 @@ class TestStoreResolver:
         assert resolve_store(2).store_name == "ecommer"
         assert resolve_store(10).store_name == "sol-y-luna"
 
+    def test_ecommer_has_few_shot_examples(self):
+        store = resolve_store(2)
+        assert len(store.few_shot) >= 4
+        roles = {e["role"] for e in store.few_shot}
+        assert {"user", "assistant"} == roles
+
+    def test_store_without_few_shot_defaults_empty(self):
+        store = resolve_store(99)
+        assert store.few_shot == []
+
 
 class TestStoreLoader:
     def test_load_stores(self):
