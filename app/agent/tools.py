@@ -105,6 +105,7 @@ async def answer(
         context_items=context_items,
         history=history,
         store_prompt=store.system_prompt,
+        nocontext_guard=not context_items,
     )
     client = get_client()
     try:

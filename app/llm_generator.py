@@ -69,6 +69,7 @@ def build_prompt(
     context_items: list[dict],
     history: list[dict],
     store_prompt: str,
+    nocontext_guard: bool = False,
 ) -> list[dict]:
     context_text = _format_context(context_items, intent)
     system_content = SYSTEM_PROMPT_TEMPLATE.format(
@@ -78,6 +79,17 @@ def build_prompt(
     )
 
     messages: list[dict] = [{"role": "system", "content": system_content}]
+
+    if nocontext_guard and not context_items:
+        messages.append({
+            "role": "system",
+            "content": (
+                "No se recuperó información del catálogo ni de documentos para esta consulta. "
+                "NO afirmes que no existen productos ni digas que no hay artículos, y nunca inventes datos. "
+                "Responde con amabilidad que no tienes esa información a la mano y pide al cliente que "
+                "precise el producto o consulta."
+            ),
+        })
 
     for msg in history[-8:]:
         role = msg.get("role", "user")

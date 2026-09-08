@@ -227,6 +227,42 @@ class TestLLMFallbacks:
         assert "problemas técnicos" in result.answer
 
 
+class TestNoContextGuard:
+    def _guard_present(self, messages) -> bool:
+        return any(
+            m.get("role") == "system"
+            and "no afirmes que no existen productos"
+            in m.get("content", "").lower()
+            for m in messages
+        )
+
+    def test_no_context_injects_guard(self, monkeypatch):
+        monkeypatch.setattr("app.agent.core.classify_intent", _stub_classify(["CATALOGO"]))
+
+        async def _no_context(*a, **k):
+            return []
+        monkeypatch.setattr(tools, "search_context", _no_context)
+        fake = _FakeGroq("Respuesta sin contexto.")
+        monkeypatch.setattr(tools, "_get_groq", lambda: fake)
+
+        _run("¿tienen audífonos?", inbox_id=2)
+
+        assert self._guard_present(fake.records[0]["messages"])
+
+    def test_with_context_omits_guard(self, monkeypatch):
+        monkeypatch.setattr("app.agent.core.classify_intent", _stub_classify(["CATALOGO"]))
+
+        async def _with_context(*a, **k):
+            return [_product(score=0.9, name="KZ Castor Pro")]
+        monkeypatch.setattr(tools, "search_context", _with_context)
+        fake = _FakeGroq("Respuesta con contexto.")
+        monkeypatch.setattr(tools, "_get_groq", lambda: fake)
+
+        _run("¿tienen KZ Castor Pro?", inbox_id=2)
+
+        assert not self._guard_present(fake.records[0]["messages"])
+
+
 class TestMemory:
     def test_history_flows_into_prompt(self, monkeypatch):
         monkeypatch.setattr("app.agent.core.classify_intent", _stub_classify(["CATALOGO"]))

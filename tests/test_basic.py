@@ -109,6 +109,27 @@ class TestIntentClassifier:
         assert "CATALOGO" in result
         assert "POLITICAS" in result
 
+    def test_accents_normalized(self):
+        result = _keyword_fallback("¿cuál es la política de envíos a Bogotá?")
+        assert "POLITICAS" in result
+
+    def test_catalogo_necesito(self):
+        result = _keyword_fallback("necesito unos audífonos para la escuela")
+        assert "CATALOGO" in result
+
+    def test_catalogo_venden_talla(self):
+        result = _keyword_fallback("¿venden camisas talla M?")
+        assert "CATALOGO" in result
+
+    def test_politicas_envios(self):
+        result = _keyword_fallback("¿tienen envíos a Bogotá?")
+        assert "POLITICAS" in result
+
+    def test_greeting_never_overrides_real_intent(self):
+        result = _keyword_fallback("hola, quiero comprar un producto")
+        assert "CONVERSACIONAL" not in result
+        assert "CATALOGO" in result
+
     def test_parse_intent_output_valid(self):
         result = _parse_intent_output("CATALOGO, POLITICAS")
         assert result == ["CATALOGO", "POLITICAS"]
