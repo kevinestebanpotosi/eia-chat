@@ -84,10 +84,11 @@ def build_prompt(
         messages.append({
             "role": "system",
             "content": (
-                "No se recuperó información del catálogo ni de documentos para esta consulta. "
-                "NO afirmes que no existen productos ni digas que no hay artículos, y nunca inventes datos. "
-                "Responde con amabilidad que no tienes esa información a la mano y pide al cliente que "
-                "precise el producto o consulta."
+                "No se recuperaron coincidencias del catálogo ni de documentos para esta consulta. "
+                "No inventes datos, precios ni URLs, y no afirmes que no existen productos ni que no hay artículos. "
+                "Si el usuario pregunta por un producto o categoría, responde con honestidad que no vimos "
+                "coincidencias exactas y ofrécele intentar con otra palabra, categoría o marca. "
+                "Pide más detalle si es necesario."
             ),
         })
 

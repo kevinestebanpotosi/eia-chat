@@ -85,6 +85,16 @@ async def get_memory(conversation_id: str) -> list[dict]:
     return get_history(conversation_id)
 
 
+def _history_mentions_products(history: list[dict]) -> bool:
+    for msg in history:
+        if msg.get("role") != "assistant":
+            continue
+        content = msg.get("content") or ""
+        if "👉" in content or "http" in content or "Producto:" in content:
+            return True
+    return False
+
+
 @observe(as_type="generation")
 async def answer(
     query: str,
@@ -99,13 +109,14 @@ async def answer(
     devuelven mensajes cordiales sin romper el flujo. Trazada como una
     generación (LLM) para capturar latencia y consumo de tokens.
     """
+    has_prior_products = _history_mentions_products(history)
     messages = build_prompt(
         query=query,
         intent=intent,
         context_items=context_items,
         history=history,
         store_prompt=store.system_prompt,
-        nocontext_guard=not context_items,
+        nocontext_guard=not context_items and not has_prior_products,
     )
     client = get_client()
     try:

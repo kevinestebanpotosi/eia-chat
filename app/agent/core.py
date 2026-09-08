@@ -15,6 +15,7 @@ Reglas:
 """
 
 import logging
+import re
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -28,6 +29,21 @@ from app.observability import trace_attributes
 from app.store_resolver import resolve_store
 
 logger = logging.getLogger(__name__)
+
+TRIVIAL_REPLY = "¡Hola! ¿En qué puedo ayudarte hoy?"
+
+_ALPHA_RE = re.compile(r"[a-záéíóúüñ]", re.IGNORECASE)
+
+
+def _is_trivial(query: str) -> bool:
+    return not _ALPHA_RE.search(query)
+
+
+def _last_user_query(history: list[dict]) -> str:
+    for msg in reversed(history):
+        if msg.get("role") == "user":
+            return (msg.get("content") or "").strip()
+    return ""
 
 
 @dataclass
@@ -139,14 +155,32 @@ async def run_agent(
             save_message(conversation_id, "assistant", answer)
             return result
 
+        history = await tools.get_memory(conversation_id)
+        tools_used: list[str] = ["get_memory"]
+
+        if _is_trivial(query):
+            return AgentResult(
+                answer=TRIVIAL_REPLY,
+                intent_detected="CONVERSACIONAL",
+                sources_used=0,
+                escalado=False,
+                tools_used=tools_used,
+                conversation_id=conversation_id,
+            )
+
         if intents == ["CONVERSACIONAL"]:
             context_items: list[dict] = []
-            tools_used: list[str] = []
         else:
-            context_items, tools_used = await _collect_context(query, store, intents)
+            context_items, search_used = await _collect_context(query, store, intents)
+            tools_used.extend(search_used)
 
-        history = await tools.get_memory(conversation_id)
-        tools_used.append("get_memory")
+            if not context_items:
+                prev_query = _last_user_query(history)
+                if prev_query and prev_query != query:
+                    rescued, rescue_used = await _collect_context(prev_query, store, intents)
+                    if rescued:
+                        context_items = rescued
+                        tools_used.extend(rescue_used)
 
         answer = await tools.answer(query, store, context_items, intent_str, history)
         tools_used.append("answer")

@@ -10,7 +10,7 @@ from types import SimpleNamespace
 import pytest
 
 from app.agent import tools
-from app.agent.core import run_agent
+from app.agent.core import run_agent, TRIVIAL_REPLY
 from app.store_resolver import resolve_store, init_stores
 
 
@@ -70,6 +70,27 @@ def _recording_search(calls):
         calls.append(list(intents))
         return [_product()] if "CATALOGO" in intents else [_doc()]
     return _search
+
+
+def _recording_conditional_search(calls, good_terms=("productos",)):
+    async def _search(query, store, intents, limit=10):
+        calls.append(query)
+        if any(t in query.lower() for t in good_terms):
+            return [_product(score=0.95, name="Panela orgánica")]
+        return []
+    return _search
+
+
+def _has_guard(messages) -> bool:
+    return any(
+        m.get("role") == "system"
+        and "no afirmes que no existen productos" in m.get("content", "").lower()
+        for m in messages
+    )
+
+
+def _fail_never(*args, **kwargs):
+    raise AssertionError("No debería invocarse")
 
 
 class _FakeGroq:
@@ -228,14 +249,6 @@ class TestLLMFallbacks:
 
 
 class TestNoContextGuard:
-    def _guard_present(self, messages) -> bool:
-        return any(
-            m.get("role") == "system"
-            and "no afirmes que no existen productos"
-            in m.get("content", "").lower()
-            for m in messages
-        )
-
     def test_no_context_injects_guard(self, monkeypatch):
         monkeypatch.setattr("app.agent.core.classify_intent", _stub_classify(["CATALOGO"]))
 
@@ -247,7 +260,7 @@ class TestNoContextGuard:
 
         _run("¿tienen audífonos?", inbox_id=2)
 
-        assert self._guard_present(fake.records[0]["messages"])
+        assert _has_guard(fake.records[0]["messages"])
 
     def test_with_context_omits_guard(self, monkeypatch):
         monkeypatch.setattr("app.agent.core.classify_intent", _stub_classify(["CATALOGO"]))
@@ -260,7 +273,121 @@ class TestNoContextGuard:
 
         _run("¿tienen KZ Castor Pro?", inbox_id=2)
 
-        assert not self._guard_present(fake.records[0]["messages"])
+        assert not _has_guard(fake.records[0]["messages"])
+
+    def test_no_context_with_prior_products_omits_guard(self, monkeypatch):
+        monkeypatch.setattr("app.agent.core.classify_intent", _stub_classify(["CATALOGO"]))
+
+        async def _no_context(*a, **k):
+            return []
+        monkeypatch.setattr(tools, "search_context", _no_context)
+        monkeypatch.setattr(
+            tools, "get_history",
+            lambda cid: [{"role": "assistant",
+                          "content": "👉 Panela orgánica 🔗 https://ecommer.shop/es/product/panela-organica"}],
+        )
+        fake = _FakeGroq("Puedo recomendarte la panela de antes.")
+        monkeypatch.setattr(tools, "_get_groq", lambda: fake)
+
+        _run("¿qué marcas hay?", inbox_id=2)
+
+        assert not _has_guard(fake.records[0]["messages"])
+
+
+class TestFollowUpRescue:
+    def test_no_results_rescues_with_previous_query(self, monkeypatch):
+        monkeypatch.setattr("app.agent.core.classify_intent", _stub_classify(["CATALOGO"]))
+        calls = []
+        monkeypatch.setattr(tools, "search_context",
+                            _recording_conditional_search(calls, good_terms=("productos",)))
+        monkeypatch.setattr(tools, "get_history", lambda cid: [
+            {"role": "user", "content": "¿qué productos tienes?"},
+        ])
+        fake = _FakeGroq("Te recomiendo la panela orgánica.")
+        monkeypatch.setattr(tools, "_get_groq", lambda: fake)
+
+        result = _run("Busco poder comprar algún cage", conversation_id="rescue-1", inbox_id=2)
+
+        assert calls == ["Busco poder comprar algún cage", "¿qué productos tienes?"]
+        assert result.sources_used == 1
+        assert result.tools_used.count("search_catalogo") == 2
+        assert not _has_guard(fake.records[0]["messages"])
+
+    def test_no_previous_query_no_rescue(self, monkeypatch):
+        monkeypatch.setattr("app.agent.core.classify_intent", _stub_classify(["CATALOGO"]))
+        calls = []
+        monkeypatch.setattr(tools, "search_context",
+                            _recording_conditional_search(calls, good_terms=("productos",)))
+        monkeypatch.setattr(tools, "get_history", lambda cid: [])
+        fake = _FakeGroq("No encontramos coincidencias exactas.")
+        monkeypatch.setattr(tools, "_get_groq", lambda: fake)
+
+        result = _run("Busco poder comprar algún cage", conversation_id="rescue-2", inbox_id=2)
+
+        assert calls == ["Busco poder comprar algún cage"]
+        assert result.sources_used == 0
+        assert result.tools_used.count("search_catalogo") == 1
+        assert _has_guard(fake.records[0]["messages"])
+
+    def test_same_previous_query_no_rescue_loop(self, monkeypatch):
+        monkeypatch.setattr("app.agent.core.classify_intent", _stub_classify(["CATALOGO"]))
+        calls = []
+        monkeypatch.setattr(tools, "search_context",
+                            _recording_conditional_search(calls, good_terms=("jaula",)))
+        monkeypatch.setattr(tools, "get_history", lambda cid: [
+            {"role": "user", "content": "¿tienen jaulas?"},
+        ])
+        monkeypatch.setattr(tools, "_get_groq",
+                            lambda: _FakeGroq("No encontramos coincidencias exactas."))
+
+        _run("¿tienen jaulas?", conversation_id="rescue-3", inbox_id=2)
+
+        assert calls == ["¿tienen jaulas?"]
+
+
+class TestFollowUpUsesPriorProducts:
+    HISTORY = [{"role": "assistant",
+                "content": "👉 Panela orgánica 🔗 https://ecommer.shop/es/product/panela-organica"}]
+
+    def test_conversacional_followup_skips_guard_and_search(self, monkeypatch):
+        monkeypatch.setattr("app.agent.core.classify_intent", _stub_classify(["CONVERSACIONAL"]))
+        monkeypatch.setattr(tools, "get_history", lambda cid: self.HISTORY)
+        monkeypatch.setattr(tools, "search_context", _fail_never)
+        fake = _FakeGroq("Te recomiendo la panela orgánica.")
+        monkeypatch.setattr(tools, "_get_groq", lambda: fake)
+
+        result = _run("¿cuál me recomiendas?", conversation_id="followup-1", inbox_id=2)
+
+        assert result.answer == "Te recomiendo la panela orgánica."
+        assert not _has_guard(fake.records[0]["messages"])
+        assert not any(n.startswith("search_") for n in result.tools_used)
+
+
+class TestTrivialMessages:
+    def test_dot_reply_short_without_llm_or_memory(self, monkeypatch):
+        monkeypatch.setattr("app.agent.core.classify_intent", _stub_classify(["CONVERSACIONAL"]))
+        monkeypatch.setattr(tools, "_get_groq", _fail_never)
+        monkeypatch.setattr(tools, "search_context", _fail_never)
+        saved = []
+        monkeypatch.setattr("app.agent.core.save_message", lambda *a: saved.append(a))
+
+        result = _run(".", conversation_id="triv-1", inbox_id=2)
+
+        assert result.answer == TRIVIAL_REPLY
+        assert result.sources_used == 0
+        assert result.tools_used == ["get_memory"]
+        assert saved == []
+
+    def test_emoji_reply_short(self, monkeypatch):
+        monkeypatch.setattr("app.agent.core.classify_intent", _stub_classify(["CONVERSACIONAL"]))
+        monkeypatch.setattr(tools, "_get_groq", _fail_never)
+        saved = []
+        monkeypatch.setattr("app.agent.core.save_message", lambda *a: saved.append(a))
+
+        result = _run("😀", conversation_id="triv-2", inbox_id=2)
+
+        assert result.answer == TRIVIAL_REPLY
+        assert saved == []
 
 
 class TestMemory:
