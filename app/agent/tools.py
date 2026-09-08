@@ -15,10 +15,11 @@ from groq import AsyncGroq
 from langfuse import get_client, observe
 
 from app.config import settings
-from app.grounding import apply_grounding, ensure_product_links
+from app.grounding import apply_grounding
 from app.llm_generator import build_prompt
 from app.memory import get_history
 from app.observability import usage_details_from_groq
+from app.renderer import annotate_products, render_product_footer
 from app.retriever import search_context, list_categories
 from app.store_resolver import StoreConfig
 
@@ -154,7 +155,10 @@ async def answer(
             )
             added_links: list[str] = []
             if not grounding_issues and text:
-                text, added_links = ensure_product_links(text, context_items, intent=intent)
+                clean_text, mentioned = annotate_products(text, context_items, intent=intent)
+                footer = render_product_footer(mentioned)
+                text = f"{clean_text} {footer}".strip() if footer else clean_text
+                added_links = [p.url for p in mentioned]
             generation.update(
                 output=text,
                 usage_details=usage_details_from_groq(completion),

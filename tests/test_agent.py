@@ -494,7 +494,9 @@ class TestGroundingGuardrail:
 
         result = _run("¿tienen KZ Castor Pro?", inbox_id=2)
 
-        assert result.answer == f"Te recomiendo el KZ Castor Pro 🔗 {url}"
+        assert url in result.answer
+        assert result.answer.count(url) == 1
+        assert f"🔗 {url}" not in result.answer
 
     def test_followup_product_from_history_passes(self, monkeypatch):
         monkeypatch.setattr("app.agent.core.classify_intent", _stub_classify(["CATALOGO"]))

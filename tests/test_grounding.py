@@ -6,7 +6,6 @@ Sin dependencias externas: solo manipulan payloads, historial y texto.
 from app.grounding import (
     apply_grounding,
     collect_known,
-    ensure_product_links,
     find_ungrounded,
     FALLBACK_UNGROUNDED,
     _normalize,
@@ -112,48 +111,3 @@ class TestApplyGrounding:
         out, issues = apply_grounding(text, [], history, intent="CATALOGO")
         assert out == text
         assert issues == []
-
-
-class TestEnsureProductLinks:
-    def test_appends_missing_link_for_mentioned_product(self):
-        item = _product(name="Café orgánico Alem",
-                        url="https://ecommer.shop/es/product/cafe-organico-alem")
-        text = "El café orgánico Alem tiene un aroma intenso. ¿Quieres comprarlo?"
-        out, added = ensure_product_links(text, [item], intent="CATALOGO")
-        assert added == ["https://ecommer.shop/es/product/cafe-organico-alem"]
-        assert "https://ecommer.shop/es/product/cafe-organico-alem" in out
-
-    def test_keeps_text_when_link_already_present(self):
-        item = _product(name="KZ Castor Pro",
-                        url="https://ecommer.shop/es/product/kz-castor-pro-bass-edition")
-        text = "El KZ Castor Pro 🔗 https://ecommer.shop/es/product/kz-castor-pro-bass-edition"
-        out, added = ensure_product_links(text, [item], intent="CATALOGO")
-        assert added == []
-        assert out == text
-
-    def test_non_catalog_intent_unchanged(self):
-        item = _product()
-        text = "Menciona el KZ Castor Pro pero sin link"
-        out, added = ensure_product_links(text, [item], intent="POLITICAS")
-        assert out == text
-        assert added == []
-
-    def test_product_without_url_in_context_unchanged(self):
-        item = {"score": 0.9, "payload": {"metadata": {"name": "Panela orgánica"}}}
-        text = "Te recomiendo la panela orgánica"
-        out, added = ensure_product_links(text, [item], intent="CATALOGO")
-        assert out == text
-        assert added == []
-
-    def test_multiple_products_appends_each_missing_link(self):
-        ctx = [
-            _product(name="Café orgánico Alem",
-                     url="https://ecommer.shop/es/product/cafe"),
-            _product(name="Panela orgánica",
-                     url="https://ecommer.shop/es/product/panela"),
-        ]
-        text = "Tenemos café orgánico Alem y panela orgánica para endulzar."
-        out, added = ensure_product_links(text, ctx, intent="CATALOGO")
-        assert len(added) == 2
-        assert "https://ecommer.shop/es/product/cafe" in out
-        assert "https://ecommer.shop/es/product/panela" in out

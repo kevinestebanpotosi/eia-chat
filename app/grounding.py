@@ -193,39 +193,9 @@ def ensure_product_links(
     context_items: list[dict],
     intent: str = "",
 ) -> tuple[str, list[str]]:
-    """Agrega los links de compra faltantes a respuestas de catálogo.
+    """Eliminado: el agregado de links vive ahora en `app.renderer`.
 
-    Si la respuesta menciona un producto recuperado en el turno pero no
-    incluye su URL, se agrega el link real del CONTEXTO al final. Solo usa
-    URLs extraídas del contexto (nunca inventadas), por lo que la guarda de
-    grounding sigue pasando. Devuelve el texto enriquecido y los links
-    agregados.
+    Mantenido como stub para no romper imports externos hasta la próxima
+    limpieza. Devuelve el texto sin tocar.
     """
-    if "CATALOGO" not in intent or not text:
-        return text, []
-
-    used_urls = set(_URL_RE.findall(text))
-    added: list[str] = []
-    normalized_answer = _normalize(text)
-
-    for item in context_items or []:
-        payload = item.get("payload", {}) or {}
-        urls = sorted(_extract_urls(payload))
-        if not urls:
-            continue
-        names = _extract_names(payload)
-        mentioned = any(n and n in normalized_answer for n in names)
-        if not mentioned:
-            continue
-        url = urls[0]
-        if url in used_urls:
-            continue
-        added.append(url)
-        used_urls.add(url)
-
-    if not added:
-        return text, []
-
-    enriched = f"{text} " + " ".join(f"🔗 {u}" for u in added)
-    logger.info("Links agregados por grounding: %s", added)
-    return enriched.strip(), added
+    return text, []
