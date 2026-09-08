@@ -11,6 +11,7 @@ import pytest
 
 from app.agent import tools
 from app.agent.core import run_agent, TRIVIAL_REPLY
+from app.grounding import FALLBACK_UNGROUNDED
 from app.llm_generator import build_prompt
 from app.store_resolver import resolve_store, init_stores
 
@@ -465,6 +466,98 @@ class TestMemory:
         _run("¿tienen amigurumis?", conversation_id="mem-2", inbox_id=10)
 
         assert saved == [("user", "¿tienen amigurumis?"), ("assistant", "Respuesta.")]
+
+
+class TestGroundingGuardrail:
+    def test_hallucinated_product_is_blocked(self, monkeypatch):
+        monkeypatch.setattr("app.agent.core.classify_intent", _stub_classify(["CATALOGO"]))
+
+        async def _no_context(*a, **k):
+            return []
+        monkeypatch.setattr(tools, "search_context", _no_context)
+        fake = _FakeGroq("👉 iPhone 15 🔗 https://ecommer.shop/product/iphone-15")
+        monkeypatch.setattr(tools, "_get_groq", lambda: fake)
+
+        result = _run("¿tienen iPhone 15?", inbox_id=2)
+
+        assert result.answer == FALLBACK_UNGROUNDED
+
+    def test_grounded_answer_passes_through(self, monkeypatch):
+        monkeypatch.setattr("app.agent.core.classify_intent", _stub_classify(["CATALOGO"]))
+
+        async def _with_context(*a, **k):
+            return [_product(score=0.9, name="KZ Castor Pro")]
+        monkeypatch.setattr(tools, "search_context", _with_context)
+        url = "https://ecommer.shop/es/product/kz-castor-pro-bass-edition"
+        fake = _FakeGroq(f"Te recomiendo el KZ Castor Pro 🔗 {url}")
+        monkeypatch.setattr(tools, "_get_groq", lambda: fake)
+
+        result = _run("¿tienen KZ Castor Pro?", inbox_id=2)
+
+        assert result.answer == f"Te recomiendo el KZ Castor Pro 🔗 {url}"
+
+    def test_followup_product_from_history_passes(self, monkeypatch):
+        monkeypatch.setattr("app.agent.core.classify_intent", _stub_classify(["CATALOGO"]))
+
+        async def _with_context(*a, **k):
+            return [_product(score=0.9, name="KZ Castor Pro")]
+        monkeypatch.setattr(tools, "search_context", _with_context)
+        monkeypatch.setattr(tools, "get_history", lambda cid: [
+            {"role": "assistant",
+             "content": "👉 Panela orgánica 🔗 https://ecommer.shop/product/panela-organica"},
+        ])
+        url = "https://ecommer.shop/product/panela-organica"
+        fake = _FakeGroq(f"Puedes ir por la de antes 👉 Panela orgánica 🔗 {url}")
+        monkeypatch.setattr(tools, "_get_groq", lambda: fake)
+
+        result = _run("¿me recomiendas la panela?", inbox_id=2)
+
+        assert "Panela orgánica" in result.answer
+
+
+class TestCategoriesDispatch:
+    def test_categories_query_uses_list_categorias_not_search(self, monkeypatch):
+        monkeypatch.setattr("app.agent.core.classify_intent", _stub_classify(["CATALOGO"]))
+        monkeypatch.setattr(tools, "search_context", _fail_never)
+
+        async def _fake_cats(store):
+            return ["Audio", "Libros"]
+        monkeypatch.setattr(tools, "list_categorias", _fake_cats)
+        fake = _FakeGroq("Tenemos las categorías Audio y Libros.")
+        monkeypatch.setattr(tools, "_get_groq", lambda: fake)
+
+        result = _run("¿qué categorías hay en tu tienda?", inbox_id=2)
+
+        assert result.answer == "Tenemos las categorías Audio y Libros."
+        assert "list_categorias" in result.tools_used
+        assert "search_catalogo" not in result.tools_used
+        assert result.sources_used == 1
+
+    def test_non_categories_query_uses_search_catalogo(self, monkeypatch):
+        monkeypatch.setattr("app.agent.core.classify_intent", _stub_classify(["CATALOGO"]))
+        monkeypatch.setattr(tools, "list_categorias", _fail_never)
+        calls = []
+        monkeypatch.setattr(tools, "search_context", _recording_search(calls))
+        monkeypatch.setattr(tools, "_get_groq", lambda: _FakeGroq("Ok."))
+
+        _run("¿tienen amigurumis?", inbox_id=2)
+
+        assert calls == [["CATALOGO"]]
+
+    def test_categories_query_with_tenants(self, monkeypatch):
+        monkeypatch.setattr("app.agent.core.classify_intent", _stub_classify(["CATALOGO"]))
+        monkeypatch.setattr(tools, "search_context", _fail_never)
+
+        async def _fake_cats(store):
+            return ["Aromaterapia"]
+        monkeypatch.setattr(tools, "list_categorias", _fake_cats)
+        fake = _FakeGroq("En Sol y Luna tenemos Aromaterapia.")
+        monkeypatch.setattr(tools, "_get_groq", lambda: fake)
+
+        result = _run("¿qué categorías manejan?", conversation_id="syL-1", inbox_id=10)
+
+        assert result.answer == "En Sol y Luna tenemos Aromaterapia."
+        assert "list_categorias" in result.tools_used
 
 
 class TestInputs:

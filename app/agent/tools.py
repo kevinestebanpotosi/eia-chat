@@ -15,10 +15,11 @@ from groq import AsyncGroq
 from langfuse import get_client, observe
 
 from app.config import settings
+from app.grounding import apply_grounding
 from app.llm_generator import build_prompt
 from app.memory import get_history
 from app.observability import usage_details_from_groq
-from app.retriever import search_context
+from app.retriever import search_context, list_categories
 from app.store_resolver import StoreConfig
 
 logger = logging.getLogger(__name__)
@@ -80,6 +81,17 @@ async def search_docs(
 
 
 @observe(as_type="tool")
+async def list_categorias(store: StoreConfig) -> list[str]:
+    """Lista las categorías reales del catálogo de la tienda (estructurado).
+
+    No es una búsqueda semántica: recorre el payload para responder consultas
+    de agregación ("¿qué categorías tienen?") sin inventar categorías.
+    """
+    logger.info("Tool list_categorias :: store=%s", store.store_name)
+    return await list_categories(store)
+
+
+@observe(as_type="tool")
 async def get_memory(conversation_id: str) -> list[dict]:
     """Recupera el historial de la conversación (Redis/Valkey)."""
     return get_history(conversation_id)
@@ -137,10 +149,17 @@ async def answer(
             raw = completion.choices[0].message.content or ""
             text = raw.encode("utf-8", errors="replace").decode("utf-8")
             text = text.replace("\n", " ").replace("\r", "").strip()
+            text, grounding_issues = apply_grounding(
+                text, context_items, history, intent=intent
+            )
             generation.update(
                 output=text,
                 usage_details=usage_details_from_groq(completion),
-                metadata={"finish_reason": completion.choices[0].finish_reason},
+                metadata={
+                    "finish_reason": completion.choices[0].finish_reason,
+                    "grounded": not grounding_issues,
+                    "grounding_issues": grounding_issues,
+                },
             )
         if not text:
             logger.warning(
@@ -167,6 +186,7 @@ async def escalate(store: StoreConfig) -> str:
 TOOL_REGISTRY: dict[str, Callable[..., Awaitable[object]]] = {
     "search_catalogo": search_catalogo,
     "search_docs": search_docs,
+    "list_categorias": list_categorias,
     "get_memory": get_memory,
     "answer": answer,
     "escalate": escalate,

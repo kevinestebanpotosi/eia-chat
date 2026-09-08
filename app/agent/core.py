@@ -33,6 +33,7 @@ logger = logging.getLogger(__name__)
 TRIVIAL_REPLY = "¡Hola! ¿En qué puedo ayudarte hoy?"
 
 _ALPHA_RE = re.compile(r"[a-záéíóúüñ]", re.IGNORECASE)
+_CATEGORIES_QUERY_RE = re.compile(r"categor[ií]as", re.IGNORECASE)
 
 
 def _is_trivial(query: str) -> bool:
@@ -76,17 +77,38 @@ def _pick_tools(intents: list[str]) -> list[str]:
     return names
 
 
+def _is_categories_query(query: str) -> bool:
+    return bool(_CATEGORIES_QUERY_RE.search(query))
+
+
 async def _collect_context(
     query: str, store, intents: list[str]
 ) -> tuple[list[dict], list[str]]:
     context: list[dict] = []
     used: list[str] = []
     doc_intents = [i for i in intents if i in ("POLITICAS", "INFO_GENERAL")]
-    for name in _pick_tools(intents):
+
+    catalog_name: str | None = None
+    if "CATALOGO" in intents:
+        catalog_name = "list_categorias" if _is_categories_query(query) else "search_catalogo"
+
+    for name in ([catalog_name] if catalog_name else []) + (["search_docs"] if doc_intents else []):
         if name == "search_catalogo":
             items = await tools.search_catalogo(query, store)
         elif name == "search_docs":
             items = await tools.search_docs(query, store, doc_intents)
+        elif name == "list_categorias":
+            categories = await tools.list_categorias(store)
+            if categories:
+                items = [{
+                    "score": 1.0,
+                    "payload": {
+                        "metadata": {"categories": categories, "name": "Catálogo de la tienda"},
+                        "text": f"Categorías disponibles en la tienda: {', '.join(categories)}.",
+                    },
+                }]
+            else:
+                items = []
         else:
             continue
         context.extend(items)

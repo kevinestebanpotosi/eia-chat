@@ -1,4 +1,5 @@
 import logging
+import re
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,9 +11,10 @@ from app.schemas import ChatRequest, ChatResponse, AgentChatResponse
 from app.store_resolver import resolve_store, init_stores, reload_stores, get_inbox_map
 from app.store_loader import list_stores_summary
 from app.intent_classifier import classify_intent
-from app.retriever import search_context
+from app.retriever import search_context, list_categories
 from app.memory import get_history, save_message
 from app.llm_generator import build_prompt
+from app.grounding import apply_grounding
 from app.agent.core import run_agent
 
 logging.basicConfig(
@@ -36,6 +38,12 @@ app.add_middleware(
 )
 
 _groq_client: AsyncGroq | None = None
+
+_CATEGORIES_QUERY_RE = re.compile(r"categor[ií]as", re.IGNORECASE)
+
+
+def _is_categories_query(query: str) -> bool:
+    return bool(_CATEGORIES_QUERY_RE.search(query))
 
 
 def _get_groq() -> AsyncGroq:
@@ -72,7 +80,18 @@ async def chat_endpoint(request: ChatRequest):
     intent_str = ", ".join(intents)
     logger.info("Intenciones: %s", intent_str)
 
-    context_items = await search_context(query, store, intents)
+    if "CATALOGO" in intents and _is_categories_query(query):
+        categories = await list_categories(store)
+        context_items = (
+            [{"score": 1.0, "payload": {
+                "metadata": {"categories": categories, "name": "Catálogo de la tienda"},
+                "text": f"Categorías disponibles en la tienda: {', '.join(categories)}.",
+            }}]
+            if categories
+            else []
+        )
+    else:
+        context_items = await search_context(query, store, intents)
 
     history = get_history(request.conversation_id)
 
@@ -95,6 +114,11 @@ async def chat_endpoint(request: ChatRequest):
         raw = completion.choices[0].message.content or ""
         answer = raw.encode("utf-8", errors="replace").decode("utf-8")
         answer = answer.replace("\n", " ").replace("\r", "").strip()
+        answer, grounding_issues = apply_grounding(
+            answer, context_items, history, intent=intent_str
+        )
+        if grounding_issues:
+            logger.warning("/chat :: grounding bloqueó la respuesta: %s", grounding_issues)
         if not answer:
             logger.warning(
                 "Groq devolvió contenido vacío (finish_reason=%s)",
