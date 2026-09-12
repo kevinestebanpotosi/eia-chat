@@ -23,6 +23,12 @@ class Settings:
     # --- Redis/Valkey (memory) ---
     REDIS_URL: str | None = os.getenv("REDIS_URL") or os.getenv("VALKEY_URL")
 
+    # --- Chatwoot (webhook + envío de respuestas) ---
+    CHATWOOT_BASE_URL: str | None = os.getenv("CHATWOOT_BASE_URL")
+    CHATWOOT_ACCOUNT_ID: str | None = os.getenv("CHATWOOT_ACCOUNT_ID")
+    CHATWOOT_API_ACCESS_TOKEN: str | None = os.getenv("CHATWOOT_API_ACCESS_TOKEN")
+    CHATWOOT_ALLOWED_INBOX_IDS: str | None = os.getenv("CHATWOOT_ALLOWED_INBOX_IDS")
+
     # --- Retriever ---
     RETRIEVER_MIN_SCORE: float = float(os.getenv("RETRIEVER_MIN_SCORE", "0.4"))
 

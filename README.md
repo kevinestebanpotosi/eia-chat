@@ -5,7 +5,7 @@ Unified RAG gateway for Ecommer — intent classification, vector search, conver
 ## Architecture
 
 ```
-User (Chatwoot) → POST /chat → Intent Classifier (Groq)
+User (Chatwoot) → POST /api/chatwoot-webhook → Intent Classifier (Groq)
                                       ↓
                               Vector Search (Qdrant + Azure OpenAI embeddings)
                                       ↓
@@ -13,8 +13,12 @@ User (Chatwoot) → POST /chat → Intent Classifier (Groq)
                                       ↓
                               LLM Generation (Groq gpt-oss-120b)
                                       ↓
-                                ChatResponse
+                              ChatResponse → send_message_to_chatwoot
 ```
+
+El glue de Chatwoot (antes en `eia-bot`) vive ahora aquí: `POST /api/chatwoot-webhook`
+recibe el webhook, reusa el agente (`/agent/chat`) internamente y responde a la
+conversación en Chatwoot.
 
 ## Stack
 
@@ -42,6 +46,11 @@ eia-rag/
 │   ├── retriever.py         # Qdrant vector search
 │   ├── memory.py            # Redis chat history
 │   ├── llm_generator.py     # Prompt builder
+│   ├── api.py               # Router /api (webhook Chatwoot + pruebas)
+│   ├── services/
+│   │   ├── chatwoot_parser.py   # Parser del webhook de Chatwoot
+│   │   ├── chatwoot_service.py  # Envío de mensajes a Chatwoot
+│   │   └── webhook_parser.py    # Parser de webhook Messenger
 │   └── templates/
 │       └── prompts.py       # System prompt template
 ├── tests/
@@ -131,6 +140,33 @@ Health check.
 }
 ```
 
+### `POST /api/chatwoot-webhook`
+
+Webhook de Chatwoot (reemplaza a `eia-bot`). Recibe eventos `message_created`,
+filtra mensajes entrantes, consulta el agente internamente (`/agent/chat`) y publica
+la respuesta de vuelta en la conversación de Chatwoot.
+
+Requiere las variables `CHATWOOT_BASE_URL`, `CHATWOOT_ACCOUNT_ID` y
+`CHATWOOT_API_ACCESS_TOKEN`. Filtra por `CHATWOOT_ALLOWED_INBOX_IDS` (CSV opcional).
+
+### `POST /api/chat`
+
+Prueba directa del agente:
+
+```json
+{
+  "query": "Hola, prueba de conexión"
+}
+```
+
+### `POST /api/webhook`
+
+Webhook directo de Messenger/Meta para pruebas desde Swagger.
+
+### `GET /api/hello`
+
+Chequeo rápido de salud.
+
 ## Multi-Tenant Support
 
 Each store is identified by `inbox_id` (Chatwoot inbox). See `app/store_resolver.py` for the full mapping.
@@ -163,6 +199,10 @@ Each store is identified by `inbox_id` (Chatwoot inbox). See `app/store_resolver
 | `GROQ_CHAT_MODEL` | Yes | Generation model (e.g. `openai/gpt-oss-120b`). No default since 2026-08-29. Reasoning model → use generous max_tokens (1024) |
 | `REDIS_URL` | Yes | Redis connection URL |
 | `PORT` | No | Server port (default: `8080`; `8000` via `uv run dev`) |
+| `CHATWOOT_BASE_URL` | No | Base URL de Chatwoot (para el webhook) |
+| `CHATWOOT_ACCOUNT_ID` | No | ID de cuenta de Chatwoot |
+| `CHATWOOT_API_ACCESS_TOKEN` | No | Token de acceso a la API de Chatwoot |
+| `CHATWOOT_ALLOWED_INBOX_IDS` | No | CSV opcional de inbox permitidos |
 
 ## Deployment to Railway
 

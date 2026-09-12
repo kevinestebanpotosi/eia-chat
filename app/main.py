@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from groq import AsyncGroq
 from pydantic import ValidationError
 
+from app.api import router as chatwoot_router
 from app.config import settings, validate_settings
 from app.schemas import ChatRequest, ChatResponse, AgentChatResponse
 from app.store_resolver import resolve_store, init_stores, reload_stores, get_inbox_map
@@ -37,6 +38,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(chatwoot_router)
 
 _groq_client: AsyncGroq | None = None
 
